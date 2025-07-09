@@ -4,6 +4,7 @@ import (
 	"auth-api/internal/kafka"
 	"auth-api/internal/models"
 	"auth-api/internal/utils"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -98,11 +99,19 @@ func VerifyUser(c *fiber.Ctx) error {
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
 
+	// Debug: Log the raw body
+	body := c.Body()
+	log.Printf("Raw request body: %s", string(body))
+
 	if err := c.BodyParser(&req); err != nil {
+		log.Printf("BodyParser error: %v", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request",
 		})
 	}
+
+	// Debug: Log the parsed request
+	log.Printf("Parsed request: %+v", req)
 
 	// Validate required fields
 	if req.Email == "" || req.Password == "" {
@@ -149,15 +158,17 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	// Hash and store refresh token
-	tokenHash := utils.HashRefreshToken(refreshToken)
-	expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days
+	refreshTokenHash := utils.HashRefreshToken(refreshToken)
+	refreshExpiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days
 	
-	err = models.StoreRefreshToken(user.ID, tokenHash, expiresAt)
+	err = models.StoreRefreshToken(user.ID, refreshTokenHash, refreshExpiresAt)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to store refresh token",
 		})
 	}
+
+
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Login successful",
@@ -194,14 +205,6 @@ func RefreshToken(c *fiber.Ctx) error {
 		})
 	}
 
-	// Validate refresh token JWT
-	claims, err := utils.ValidateToken(req.RefreshToken)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid refresh token",
-		})
-	}
-
 	// Hash the provided token and check if it exists in database
 	tokenHash := utils.HashRefreshToken(req.RefreshToken)
 	storedToken, err := models.GetRefreshTokenByHash(tokenHash)
@@ -221,7 +224,7 @@ func RefreshToken(c *fiber.Ctx) error {
 	}
 
 	// Get user to ensure they still exist and are verified
-	user, err := models.GetUserByEmail(claims.Email)
+	user, err := models.GetUserByID(storedToken.UserID)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "User not found",
@@ -234,7 +237,7 @@ func RefreshToken(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate new access token
+	// Generate new access and refresh tokens
 	accessToken, err := utils.GenerateAccessToken(user.ID, user.Email, user.Role)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -242,11 +245,37 @@ func RefreshToken(c *fiber.Ctx) error {
 		})
 	}
 
+	newRefreshToken, err := utils.GenerateRefreshToken(user.ID, user.Email)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to generate refresh token",
+		})
+	}
+
+	// Hash and store new refresh token
+	newRefreshTokenHash := utils.HashRefreshToken(newRefreshToken)
+	newRefreshExpiresAt := time.Now().Add(7 * 24 * time.Hour) // 7 days
+	
+	err = models.StoreRefreshToken(user.ID, newRefreshTokenHash, newRefreshExpiresAt)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to store new refresh token",
+		})
+	}
+
+	// Delete the old refresh token
+	err = models.DeleteRefreshToken(tokenHash)
+	if err != nil {
+		// Log the error but don't fail the request
+		log.Printf("Failed to delete old refresh token: %v", err)
+	}
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Token refreshed successfully",
-		"access_token": accessToken,
-		"token_type":   "Bearer",
-		"expires_in":   900, // 15 minutes in seconds
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+		"token_type":    "Bearer",
+		"expires_in":    900, // 15 minutes in seconds
 	})
 }
 

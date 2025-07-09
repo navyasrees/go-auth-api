@@ -93,6 +93,21 @@ func GetUserByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
+func GetUserByID(userID string) (*User, error) {
+	var user User
+	err := config.DB.QueryRow(context.Background(),
+		`SELECT id, email, password_hash, is_verified, role, created_at 
+		 FROM users WHERE id = $1`,
+		userID,
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsVerified, &user.Role, &user.CreatedAt)
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	return &user, nil
+}
+
 type RefreshToken struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"user_id"`
@@ -135,6 +150,56 @@ func DeleteRefreshToken(tokenHash string) error {
 func DeleteExpiredRefreshTokens() error {
 	query := `DELETE FROM refresh_tokens WHERE expires_at < NOW()`
 	_, err := config.DB.Exec(context.Background(), query)
+	return err
+}
+
+type AccessToken struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	TokenHash string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func StoreAccessToken(userID, tokenHash string, expiresAt time.Time) error {
+	query := `
+		INSERT INTO access_tokens (user_id, token_hash, expires_at, created_at)
+		VALUES ($1, $2, $3, NOW())
+	`
+	_, err := config.DB.Exec(context.Background(), query, userID, tokenHash, expiresAt)
+	return err
+}
+
+func GetAccessTokenByHash(tokenHash string) (*AccessToken, error) {
+	var token AccessToken
+	err := config.DB.QueryRow(context.Background(),
+		`SELECT id, user_id, token_hash, expires_at, created_at 
+		 FROM access_tokens WHERE token_hash = $1`,
+		tokenHash,
+	).Scan(&token.ID, &token.UserID, &token.TokenHash, &token.ExpiresAt, &token.CreatedAt)
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	return &token, nil
+}
+
+func DeleteAccessToken(tokenHash string) error {
+	query := `DELETE FROM access_tokens WHERE token_hash = $1`
+	_, err := config.DB.Exec(context.Background(), query, tokenHash)
+	return err
+}
+
+func DeleteExpiredAccessTokens() error {
+	query := `DELETE FROM access_tokens WHERE expires_at < NOW()`
+	_, err := config.DB.Exec(context.Background(), query)
+	return err
+}
+
+func DeleteAllAccessTokensForUser(userID string) error {
+	query := `DELETE FROM access_tokens WHERE user_id = $1`
+	_, err := config.DB.Exec(context.Background(), query, userID)
 	return err
 }
 

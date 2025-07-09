@@ -33,18 +33,20 @@ func AuthMiddleware() fiber.Handler {
 			})
 		}
 
-		// Validate token
-		claims, err := utils.ValidateToken(token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid or expired token",
-			})
-		}
+			// Validate token
+	claims, err := utils.ValidateToken(token)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid or expired token",
+		})
+	}
 
-		// Add user info to context
-		c.Locals("user_id", claims.UserID)
-		c.Locals("user_email", claims.Email)
-		c.Locals("user_role", claims.Role)
+
+
+	// Add user info to context
+	c.Locals("user_id", claims.UserID)
+	c.Locals("user_email", claims.Email)
+	c.Locals("user_role", claims.Role)
 
 		return c.Next()
 	}

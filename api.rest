@@ -1,0 +1,89 @@
+@host = http://localhost:3000
+@email = user2@mailinator.com
+
+# signup
+POST {{host}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user2@mailinator.com",
+  "password": "user1"
+}
+
+###
+# @name verifyUser
+POST {{host}}/auth/verify-user
+Content-Type: application/json
+
+{
+  "email": "user2@mailinator.com",
+  "otp": "QHKAJR"
+}
+
+###
+# @name login
+POST {{host}}/auth/login
+Content-Type: application/json
+  
+{
+  "email": "user2@mailinator.com",
+  "password": "user1"
+}
+###
+
+@refreshToken = {{login.response.body.$.refresh_token}}
+@accessToken = {{login.response.body.$.access_token}}
+@newRefreshToken = {{refreshToken.response.body.$.refresh_token}}
+@newAccessToken = {{refreshToken.response.body.$.access_token}}
+###
+# @name refreshToken
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": {{refreshToken}}
+}
+
+###
+# @name logout
+POST {{host}}/auth/logout
+Content-Type: application/json
+
+{
+  "refresh_token": {{refreshToken}}
+}
+
+###
+# Test that old refresh token is invalidated (should fail)
+# @name refreshWithOldToken
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": {{refreshToken}}
+}
+
+###
+# Protected route - Get Profile
+# @name getProfile
+GET {{host}}/api/profile
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTI5MjQzZjEtZDZlZS00M2VlLTg1OWMtYzE1ZDgwZDMwNGNiIiwiZW1haWwiOiJ1c2VyMUBtYWlsaW5hdG9yLmNvbSIsInJvbGUiOiJ1c2VyIiwiaXNzIjoiYXV0aC1hcGkiLCJleHAiOjE3NTE5OTQ0NzksImlhdCI6MTc1MTk5MzU3OX0.Vm3ZOPiRm-zDvTIMElBjKLyFFYYm70L2GTJAXk5P8DM
+
+###
+
+# Protected route - Update Profile
+# @name updateProfile
+PUT {{host}}/api/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Updated Name"
+}
+
+###
+
+# Admin route - Admin Only (will fail for regular users)
+# @name adminData
+GET {{host}}/admin/data
+Authorization: Bearer {{accessToken}}

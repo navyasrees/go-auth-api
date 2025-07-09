@@ -17,7 +17,12 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func HashRefreshToken(token string) string {
+func HashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
+}
+
+// HashRefreshToken is kept for backward compatibility
+func HashRefreshToken(token string) string {
+	return HashToken(token)
 }
