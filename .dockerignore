@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+MONITORING.md
+
+# Development files
+.env
+.env.local
+.env.development
+.env.test
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Test files
+*_test.go
+test/
+
+# Docker files (except Dockerfile)
+docker-compose.yml
+docker-compose.*.yml
+
+# Monitoring files
+prometheus.yml
+grafana-dashboard.json
+
+# API testing
+api.rest
+
+# Makefile
+Makefile
+
+# Start script
+start.sh 
