@@ -39,3 +39,23 @@ func SendOTPEmail(toEmail, otp string) error {
 
     return Writer.WriteMessages(context.Background(), msg)
 }
+
+func SendPasswordResetOTPEmail(toEmail, otp string) error {
+    emailPayload := EmailPayload{
+        To:      toEmail,
+        Subject: "Password Reset OTP",
+        Body:    "Your password reset OTP code is: " + otp + "\n\nThis OTP will expire in 15 minutes.",
+    }
+
+    jsonData, err := json.Marshal(emailPayload)
+    if err != nil {
+        return err
+    }
+
+    msg := kafka.Message{
+        Key:   []byte(toEmail),
+        Value: jsonData,
+    }
+
+    return Writer.WriteMessages(context.Background(), msg)
+}

@@ -36,6 +36,57 @@ func StoreOTP(email, otp string) error {
     return err
 }
 
+func StorePasswordResetOTP(email, otp string) error {
+    expires := time.Now().Add(15 * time.Minute)
+    _, err := config.DB.Exec(context.Background(),
+        `INSERT INTO password_reset_otps (email, otp, expires_at) VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO UPDATE SET otp = $2, expires_at = $3`,
+        email, otp, expires,
+    )
+    return err
+}
+
+func VerifyPasswordResetOTP(email, otp string) error {
+    // First, check if OTP exists and is not expired
+    var storedOTP string
+    var expiresAt time.Time
+    
+    err := config.DB.QueryRow(context.Background(),
+        `SELECT otp, expires_at FROM password_reset_otps WHERE email = $1`,
+        email,
+    ).Scan(&storedOTP, &expiresAt)
+    
+    if err != nil {
+        return fmt.Errorf("invalid email or OTP")
+    }
+    
+    // Check if OTP is expired
+    if time.Now().After(expiresAt) {
+        return fmt.Errorf("OTP has expired")
+    }
+    
+    // Check if OTP matches
+    if storedOTP != otp {
+        return fmt.Errorf("invalid OTP")
+    }
+    
+    // Delete the used OTP
+    _, err = config.DB.Exec(context.Background(),
+        `DELETE FROM password_reset_otps WHERE email = $1`,
+        email,
+    )
+    
+    return err
+}
+
+func UpdateUserPassword(email, passwordHash string) error {
+    _, err := config.DB.Exec(context.Background(),
+        `UPDATE users SET password_hash = $1 WHERE email = $2`,
+        passwordHash, email,
+    )
+    return err
+}
+
 func VerifyUserOTP(email, otp string) error {
     // First, check if OTP exists and is not expired
     var storedOTP string
@@ -150,6 +201,12 @@ func DeleteRefreshToken(tokenHash string) error {
 func DeleteExpiredRefreshTokens() error {
 	query := `DELETE FROM refresh_tokens WHERE expires_at < NOW()`
 	_, err := config.DB.Exec(context.Background(), query)
+	return err
+}
+
+func DeleteAllRefreshTokensForUser(userID string) error {
+	query := `DELETE FROM refresh_tokens WHERE user_id = $1`
+	_, err := config.DB.Exec(context.Background(), query, userID)
 	return err
 }
 

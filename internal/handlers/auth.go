@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"auth-api/internal/kafka"
+	"auth-api/internal/metrics"
 	"auth-api/internal/models"
 	"auth-api/internal/utils"
 	"log"
@@ -29,6 +30,7 @@ func SignUp(c *fiber.Ctx) error {
 	var req SignUpRequest
 
 	if err := c.BodyParser(&req); err != nil {
+		metrics.RecordAuthSignup(false)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request",
 		})
@@ -36,6 +38,7 @@ func SignUp(c *fiber.Ctx) error {
 
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
+		metrics.RecordAuthSignup(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to hash password",
 		})
@@ -43,6 +46,7 @@ func SignUp(c *fiber.Ctx) error {
 
 	err = models.CreateUser(req.Email, hashedPassword)
 	if err != nil {
+		metrics.RecordAuthSignup(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create user",
 		})
@@ -51,6 +55,7 @@ func SignUp(c *fiber.Ctx) error {
 	otp := utils.GenerateOTP()
 	err = models.StoreOTP(req.Email, otp)
 	if err != nil {
+		metrics.RecordAuthSignup(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to store OTP",
 		})
@@ -58,11 +63,14 @@ func SignUp(c *fiber.Ctx) error {
 
 	err = kafka.SendOTPEmail(req.Email, otp)
 	if err != nil {
+		metrics.RecordAuthSignup(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to send OTP email",
 		})
 	}
 
+	metrics.RecordAuthSignup(true)
+	metrics.RecordEmailSent("verification", true)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "User created successfully",
 	})
@@ -105,6 +113,7 @@ func Login(c *fiber.Ctx) error {
 
 	if err := c.BodyParser(&req); err != nil {
 		log.Printf("BodyParser error: %v", err)
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request",
 		})
@@ -115,6 +124,7 @@ func Login(c *fiber.Ctx) error {
 
 	// Validate required fields
 	if req.Email == "" || req.Password == "" {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Email and password are required",
 		})
@@ -123,6 +133,7 @@ func Login(c *fiber.Ctx) error {
 	// Check if user exists and password is correct
 	user, err := models.GetUserByEmail(req.Email)
 	if err != nil {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid email or password",
 		})
@@ -130,6 +141,7 @@ func Login(c *fiber.Ctx) error {
 
 	// Verify password
 	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid email or password",
 		})
@@ -137,6 +149,7 @@ func Login(c *fiber.Ctx) error {
 
 	// Check if user is verified
 	if !user.IsVerified {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Please verify your email before logging in",
 		})
@@ -145,6 +158,7 @@ func Login(c *fiber.Ctx) error {
 	// Generate JWT tokens
 	accessToken, err := utils.GenerateAccessToken(user.ID, user.Email, user.Role)
 	if err != nil {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate access token",
 		})
@@ -152,10 +166,15 @@ func Login(c *fiber.Ctx) error {
 
 	refreshToken, err := utils.GenerateRefreshToken(user.ID, user.Email)
 	if err != nil {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to generate refresh token",
 		})
 	}
+
+	// Record JWT token generation metrics
+	metrics.RecordJWTTokenGenerated("access_token")
+	metrics.RecordJWTTokenGenerated("refresh_token")
 
 	// Hash and store refresh token
 	refreshTokenHash := utils.HashRefreshToken(refreshToken)
@@ -163,13 +182,13 @@ func Login(c *fiber.Ctx) error {
 	
 	err = models.StoreRefreshToken(user.ID, refreshTokenHash, refreshExpiresAt)
 	if err != nil {
+		metrics.RecordAuthLogin(false)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to store refresh token",
 		})
 	}
 
-
-
+	metrics.RecordAuthLogin(true)
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Login successful",
 		"access_token":  accessToken,
@@ -281,6 +300,163 @@ func RefreshToken(c *fiber.Ctx) error {
 
 type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email"`
+	OTP         string `json:"otp"`
+	NewPassword string `json:"new_password"`
+}
+
+func ForgotPassword(c *fiber.Ctx) error {
+	var req ForgotPasswordRequest
+
+	if err := c.BodyParser(&req); err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request",
+		})
+	}
+
+	// Validate required fields
+	if req.Email == "" {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email is required",
+		})
+	}
+
+	// Check if user exists
+	user, err := models.GetUserByEmail(req.Email)
+	if err != nil {
+		// For security reasons, don't reveal if user exists or not
+		// Return success even if user doesn't exist
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "If the email exists in our system, you will receive a password reset OTP",
+		})
+	}
+
+	// Check if user is verified
+	if !user.IsVerified {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Please verify your email before requesting password reset",
+		})
+	}
+
+	// Generate OTP for password reset
+	otp := utils.GenerateOTP()
+	
+	// Store OTP with a different purpose (password reset)
+	err = models.StorePasswordResetOTP(req.Email, otp)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to store password reset OTP",
+		})
+	}
+
+	// Send OTP via email
+	err = kafka.SendPasswordResetOTPEmail(req.Email, otp)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send password reset OTP email",
+		})
+	}
+
+	metrics.RecordAuthPasswordReset(true)
+	metrics.RecordEmailSent("password_reset", true)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "If the email exists in our system, you will receive a password reset OTP",
+	})
+}
+
+func ResetPassword(c *fiber.Ctx) error {
+	var req ResetPasswordRequest
+
+	if err := c.BodyParser(&req); err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request",
+		})
+	}
+
+	// Validate required fields
+	if req.Email == "" || req.OTP == "" || req.NewPassword == "" {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Email, OTP, and new password are required",
+		})
+	}
+
+	// Validate password strength (minimum 6 characters)
+	if len(req.NewPassword) < 6 {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Password must be at least 6 characters long",
+		})
+	}
+
+	// Check if user exists
+	user, err := models.GetUserByEmail(req.Email)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid email or OTP",
+		})
+	}
+
+	// Check if user is verified
+	if !user.IsVerified {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Please verify your email before resetting password",
+		})
+	}
+
+	// Verify password reset OTP
+	err = models.VerifyPasswordResetOTP(req.Email, req.OTP)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Hash the new password
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to hash password",
+		})
+	}
+
+	// Update user's password
+	err = models.UpdateUserPassword(req.Email, hashedPassword)
+	if err != nil {
+		metrics.RecordAuthPasswordReset(false)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update password",
+		})
+	}
+
+	// Invalidate all existing refresh tokens for this user (force logout from all devices)
+	err = models.DeleteAllRefreshTokensForUser(user.ID)
+	if err != nil {
+		// Log the error but don't fail the request
+		log.Printf("Failed to delete refresh tokens: %v", err)
+	}
+
+	metrics.RecordAuthPasswordReset(true)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Password reset successfully. Please login with your new password.",
+	})
 }
 
 func Logout(c *fiber.Ctx) error {

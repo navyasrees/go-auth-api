@@ -1,13 +1,37 @@
 @host = http://localhost:3000
 @email = user2@mailinator.com
 
+# Get Prometheus metrics
+GET {{host}}/metrics
+
+###
 # signup
 POST {{host}}/auth/signup
 Content-Type: application/json
 
 {
   "email": "user2@mailinator.com",
-  "password": "user1"
+  "password": "newpassword123"
+}
+
+###
+# forgot password
+POST {{host}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "user2@mailinator.com"
+}
+
+###
+# reset password (after receiving OTP via email)
+POST {{host}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "user2@mailinator.com",
+  "otp": "OGEEB8",
+  "new_password": "newpassword123"
 }
 
 ###
@@ -27,7 +51,7 @@ Content-Type: application/json
   
 {
   "email": "user2@mailinator.com",
-  "password": "user1"
+  "password": "newpassword123"
 }
 ###
 
@@ -67,18 +91,17 @@ Content-Type: application/json
 # Protected route - Get Profile
 # @name getProfile
 GET {{host}}/api/profile
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTI5MjQzZjEtZDZlZS00M2VlLTg1OWMtYzE1ZDgwZDMwNGNiIiwiZW1haWwiOiJ1c2VyMUBtYWlsaW5hdG9yLmNvbSIsInJvbGUiOiJ1c2VyIiwiaXNzIjoiYXV0aC1hcGkiLCJleHAiOjE3NTE5OTQ0NzksImlhdCI6MTc1MTk5MzU3OX0.Vm3ZOPiRm-zDvTIMElBjKLyFFYYm70L2GTJAXk5P8DM
-
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTE5ZTE3MTAtZDlmMi00MGQyLTk3NTUtMzAzMzRkYmZhNmQ2IiwiZW1haWwiOiJ1c2VyMkBtYWlsaW5hdG9yLmNvbSIsInJvbGUiOiJ1c2VyIiwiaXNzIjoiYXV0aC1hcGkiLCJleHAiOjE3NTIwODE4MTcsImlhdCI6MTc1MjA4MDkxN30.8W11wK5przFX9bcfCW4QqS5A65Q_f0uUvB5rcu_HzF8
 ###
 
 # Protected route - Update Profile
 # @name updateProfile
 PUT {{host}}/api/profile
-Authorization: Bearer {{accessToken}}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTE5ZTE3MTAtZDlmMi00MGQyLTk3NTUtMzAzMzRkYmZhNmQ2IiwiZW1haWwiOiJ1c2VyMkBtYWlsaW5hdG9yLmNvbSIsInJvbGUiOiJ1c2VyIiwiaXNzIjoiYXV0aC1hcGkiLCJleHAiOjE3NTIwODE4MTcsImlhdCI6MTc1MjA4MDkxN30.8W11wK5przFX9bcfCW4QqS5A65Q_f0uUvB5rcu_HzF8
 Content-Type: application/json
 
 {
-  "name": "Updated Name"
+  "name": "test user2"
 }
 
 ###
@@ -86,4 +109,4 @@ Content-Type: application/json
 # Admin route - Admin Only (will fail for regular users)
 # @name adminData
 GET {{host}}/admin/data
-Authorization: Bearer {{accessToken}}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNTE5ZTE3MTAtZDlmMi00MGQyLTk3NTUtMzAzMzRkYmZhNmQ2IiwiZW1haWwiOiJ1c2VyMkBtYWlsaW5hdG9yLmNvbSIsInJvbGUiOiJ1c2VyIiwiaXNzIjoiYXV0aC1hcGkiLCJleHAiOjE3NTIwODE4MTcsImlhdCI6MTc1MjA4MDkxN30.8W11wK5przFX9bcfCW4QqS5A65Q_f0uUvB5rcu_HzF8

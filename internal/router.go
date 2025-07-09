@@ -16,6 +16,8 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/signup", handlers.SignUp)
 	auth.Post("/verify-user", handlers.VerifyUser)
 	auth.Post("/login", handlers.Login)
+	auth.Post("/forgot-password", handlers.ForgotPassword)
+	auth.Post("/reset-password", handlers.ResetPassword)
 	auth.Post("/refresh", handlers.RefreshToken)
 	auth.Post("/logout", handlers.Logout)
 
